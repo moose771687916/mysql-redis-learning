@@ -93,12 +93,3 @@ SET lock:daily_job "server1" NX EX 10
 | Python 发布 | `r.publish("频道", "消息")` |
 | Python 订阅 | `ps = r.pubsub(); ps.subscribe("频道"); ps.listen()` |
 | Python 抢锁 | `r.set(key, val, nx=True, ex=10)` |
-
----
-
-## 六、给未来的自己
-
-- Redis 事务 = 打包（无回滚）；MySQL 事务 = 打包 + 后悔药（回滚）。
-- 发布订阅 = 一个发 N 个收的广播，适合通知场景。
-- 分布式锁 = SET NX EX 三件套：**不存在才设置（互斥）+ 过期（防死锁）+ 验身份释放**。
-- 面试金句："MySQL 管强一致，Redis 管快和协调——锁可以在 MySQL（行锁/乐观锁），也可以放 Redis（分布式锁），跨服务器时只能靠 Redis。"
