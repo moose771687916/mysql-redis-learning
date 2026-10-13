@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>我的小商城</title>
+<style>
+  * { box-sizing: border-box; font-family: "Microsoft YaHei", system-ui, sans-serif; }
+  body { margin: 0; padding: 20px; background: #f5f7fa; color: #22303f; }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 4px 0; }
+  .sub { font-size: 13px; color: #5a6b7d; margin: 0 0 14px; }
+
+  .reg { background: #fff; border: 1px solid #e3e9f2; border-radius: 10px;
+         padding: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .reg input { padding: 8px 10px; border: 1px solid #c7d0dc; border-radius: 6px; font-size: 14px; }
+  button { padding: 8px 16px; border: 0; border-radius: 6px; font-size: 14px; cursor: pointer;
+           background: #2f6fce; color: #fff; }
+  button:hover { background: #255aa8; }
+  .btn-green { background: #2f9e6e; }
+  .btn-green:hover { background: #26805a; }
+  .btn-orange { background: #e07020; }
+  .btn-orange:hover { background: #c45e16; }
+  .userinfo { font-size: 13px; color: #1d6b3a; font-weight: bold; }
+
+  #msg { margin: 10px 0; padding: 8px 12px; border-radius: 6px; font-size: 14px; display: none; }
+  #msg.ok { display: block; background: #f0f9f2; color: #1d6b3a; border: 1px solid #9fd6b2; }
+  #msg.err { display: block; background: #fdf0f0; color: #b3352c; border: 1px solid #f0c4c0; }
+
+  .panel { background: #fff; border: 1px solid #e3e9f2; border-radius: 10px; padding: 12px 14px; margin-top: 14px; }
+  .panel h2 { font-size: 16px; margin: 0 0 10px; }
+
+  .products { display: flex; gap: 14px; flex-wrap: wrap; }
+  .card { flex: 1 1 220px; min-width: 210px; background: #fff; border: 1px solid #e3e9f2;
+          border-radius: 10px; padding: 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .price { font-size: 20px; font-weight: bold; color: #e07020; margin: 4px 0; }
+  .stock { font-size: 12px; color: #5a6b7d; margin: 0 0 10px; }
+  .card input { width: 70px; padding: 6px; border: 1px solid #c7d0dc; border-radius: 6px; font-size: 14px; }
+  .card button { margin-left: 6px; }
+
+  .order { border: 1px solid #e3e9f2; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 14px; }
+  .order b { color: #e07020; }
+  .order .items { color: #5a6b7d; font-size: 13px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🛒 我的小商城</h1>
+  <p class="sub">Day 10：登录系统（密码加密 + 我的订单）—— 前 9 天的完整技能链</p>
+
+  <div class="reg">
+    <span style="font-size:13px;color:#5a6b7d">注册：</span>
+    <input id="reg_user" placeholder="用户名">
+    <input id="reg_pwd" placeholder="密码" type="password">
+    <button onclick="register()">注册</button>
+    <span style="color:#8a9ab0;font-size:13px;margin:0 4px">|</span>
+    <span style="font-size:13px;color:#5a6b7d">登录：</span>
+    <input id="login_user" placeholder="用户名">
+    <input id="login_pwd" placeholder="密码" type="password">
+    <button class="btn-green" onclick="login()">登录</button>
+    <span class="userinfo" id="userinfo"></span>
+  </div>
+
+  <div id="msg"></div>
+
+  <div class="panel">
+    <h2>🛍️ 商品（买买买）</h2>
+    <div id="products" class="products">加载中...</div>
+  </div>
+
+  <div class="panel">
+    <h2>🛒 购物车
+      <button class="btn-green" onclick="checkout()" style="font-size:12px;padding:4px 10px">结算全部</button>
+      <button class="btn-orange" onclick="loadCart()" style="font-size:12px;padding:4px 10px">刷新</button>
+    </h2>
+    <div id="cart" style="font-size:13px;color:#8a9ab0">登录后显示购物车</div>
+  </div>
+
+  <div class="panel">
+    <h2>📦 我的订单 <button class="btn-orange" onclick="loadOrders()" style="font-size:12px;padding:4px 10px">刷新</button></h2>
+    <div id="orders" style="font-size:13px;color:#8a9ab0">登录后显示你的订单</div>
+  </div>
+</div>
+
+<script>
+let currentUserId = null;
+const $ = id => document.getElementById(id);
+
+function showMsg(text, ok) {
+  $("msg").textContent = text;
+  $("msg").className = ok ? "ok" : "err";
+}
+
+// 发 POST 到后端接口
+async function api(url, data) {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+  return { code: resp.status, body: await resp.json() };
+}
+
+function setUser(id, name) {
+  currentUserId = id;
+  $("userinfo").textContent = name ? `当前用户：${name}（ID ${id}）` : `当前用户：ID ${id}`;
+  loadCart();
+  loadOrders();
+}
+
+// 注册（密码在后端加密存储）
+async function register() {
+  const u = $("reg_user").value.trim(), p = $("reg_pwd").value.trim();
+  if (!u || !p) return showMsg("请输入用户名和密码", false);
+  const { code, body } = await api("/register", { username: u, password: p });
+  if (code === 200) {
+    setUser(body.user_id, u);
+    showMsg("✅ " + body.message, true);
+  } else {
+    showMsg("❌ " + (body.error || "注册失败"), false);
+  }
+}
+
+// 登录（校验密码）
+async function login() {
+  const u = $("login_user").value.trim(), p = $("login_pwd").value.trim();
+  if (!u || !p) return showMsg("请输入用户名和密码", false);
+  const { code, body } = await api("/login", { username: u, password: p });
+  if (code === 200) {
+    setUser(body.user_id, u);
+    showMsg("✅ " + body.message, true);
+  } else {
+    showMsg("❌ " + (body.error || "登录失败"), false);
+  }
+}
+
+// 拉商品列表（走 /products，带缓存）
+async function loadProducts() {
+  const resp = await fetch("/products");
+  const list = await resp.json();
+  $("products").innerHTML = list.map(p => `
+    <div class="card">
+      <h3>${p.name}</h3>
+      <p class="price">¥ ${p.price}</p>
+      <p class="stock">库存 ${p.stock}</p>
+      <input type="number" id="qty-${p.id}" value="1" min="1" max="${p.stock}">
+      <button onclick="addToCart(${p.id})" class="btn-green">加入购物车</button>
+      <button onclick="buy(${p.id})">立即购买</button>
+    </div>`).join("");
+}
+
+// 下单（走 /order，事务保护）
+async function buy(pid) {
+  if (!currentUserId) return showMsg("请先注册或登录！", false);
+  const qty = parseInt($(`qty-${pid}`).value) || 1;
+  const { code, body } = await api("/order", { user_id: currentUserId, product_id: pid, quantity: qty });
+  if (code === 200) {
+    showMsg(`✅ 下单成功！订单号 ${body.order_id}，共 ¥${body.total}`, true);
+    loadProducts();   // 刷新库存
+    loadOrders();     // 刷新我的订单
+  } else {
+    showMsg("❌ " + (body.error || "下单失败"), false);
+  }
+}
+
+// 加购物车（已存在会自动累加数量）
+async function addToCart(pid) {
+  if (!currentUserId) return showMsg("请先注册或登录！", false);
+  const qty = parseInt($(`qty-${pid}`).value) || 1;
+  const { code, body } = await api("/cart/add", { user_id: currentUserId, product_id: pid, quantity: qty });
+  if (code === 200) { showMsg("✅ " + body.message, true); loadCart(); }
+  else showMsg("❌ " + (body.error || "加购失败"), false);
+}
+
+// 看购物车
+async function loadCart() {
+  if (!currentUserId) return;
+  const resp = await fetch(`/cart?user_id=${currentUserId}`);
+  const data = await resp.json();
+  if (!data.items.length) { $("cart").textContent = "购物车是空的，去加购吧！"; return; }
+  $("cart").innerHTML = data.items.map(it => `
+    <div class="order">
+      ${it.name} × ${it.quantity}（¥${it.price}）= <b>¥${it.subtotal}</b>
+      <button onclick="removeCart(${it.cart_id})" style="font-size:12px;padding:3px 8px;background:#d36b5f;float:right">删除</button>
+    </div>`).join("") +
+    `<div style="font-size:14px;margin-top:6px">合计：<b style="color:#e07020;font-size:17px">¥${data.total}</b></div>`;
+}
+
+// 删掉购物车的一项
+async function removeCart(cartId) {
+  await api("/cart/remove", { cart_id: cartId });
+  loadCart();
+  showMsg("🗑️ 已从购物车删除", true);
+}
+
+// 结算全部：购物车所有商品 → 一笔订单（事务保护）
+async function checkout() {
+  if (!currentUserId) return showMsg("请先注册或登录！", false);
+  const { code, body } = await api("/checkout", { user_id: currentUserId });
+  if (code === 200) {
+    showMsg(`✅ 结算成功！订单号 ${body.order_id}，共 ¥${body.total}`, true);
+    loadCart(); loadOrders(); loadProducts();
+  } else {
+    showMsg("❌ " + (body.error || "结算失败"), false);
+  }
+}
+
+// 我的订单（按当前用户查）
+async function loadOrders() {
+  if (!currentUserId) return;
+  const resp = await fetch(`/myorders?user_id=${currentUserId}`);
+  const list = await resp.json();
+  if (!list.length) { $("orders").textContent = "还没有订单，快去下单吧！"; return; }
+  $("orders").innerHTML = list.map(o => `
+    <div class="order">
+      订单 #${o.order_id} · 共 <b>¥${o.total}</b> · ${o.created_at}
+      <div class="items">${o.items.map(i => `${i.name} ×${i.quantity}（¥${i.price}）`).join("、")}</div>
+    </div>`).join("");
+}
+
+loadProducts();
+</script>
+</body>
+</html>
