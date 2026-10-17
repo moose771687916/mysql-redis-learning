@@ -1,7 +1,7 @@
 # MySQL + Redis 从零实战学习仓库
 
-> 一个编程新手用 16 天，从零学完 MySQL + Redis，并亲手搭出**电商商城**的完整学习记录。
-> 每天一个总结文档（`day01.md` ~ `day16.md`）+ 可运行的实战代码。
+> 一个编程新手用 17 天，从零学完 MySQL + Redis，并亲手搭出**电商商城**的完整学习记录。
+> 每天一个总结文档（`day01.md` ~ `day17.md`）+ 可运行的实战代码。
 
 ## 这是什么
 
@@ -31,18 +31,20 @@
 | Day 14 | 并发压测 + 防超卖修复 | 100 人抢 13 件不超卖 |
 | Day 15 | Redis 事务 / 发布订阅 / 分布式锁 | 三件套全通关 |
 | Day 16 | 缓存三兄弟：穿透/击穿/雪崩 | 商城防穿透实战（布隆+空值+互斥锁） |
+| Day 17 | MySQL 执行计划 EXPLAIN | 10 万条数据 8 场景实测索引失效 |
 
 ## 目录结构
 
 ```
-├── day01.md ~ day16.md      # 每天的学习总结
-├── day01/ ~ day16/          # 每天的可运行代码（按天归档）
+├── day01.md ~ day17.md      # 每天的学习总结
+├── day01/ ~ day17/          # 每天的可运行代码（按天归档）
 │   ├── my_first_query.py    # 第一天：第一条 SELECT
 │   ├── create_order.py      # 事务下单（含超买回滚演示）
 │   ├── seckill_demo.py      # 秒杀：1000 人抢 13 件
 │   ├── index_demo.py        # 20 万条数据索引提速演示
 │   ├── stress_test.py       # 并发压测：BUG 版 vs 修复版
 │   ├── cache_attack_demo.py # 缓存穿透：1000 次攻击三方案对比
+│   ├── explain_demo.py      # EXPLAIN 执行计划：8 场景索引失效实测
 │   └── ...
 ├── app.py                   # 电商商城后端（Flask + MySQL + Redis）
 ├── static/shop.html         # 商城前端页面
