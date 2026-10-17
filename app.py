@@ -20,6 +20,7 @@ import pymysql
 import redis
 import json
 import os
+import time
 
 app = Flask(__name__)
 
@@ -67,11 +68,71 @@ def products():
 
     data = [{"id": r[0], "name": r[1], "price": float(r[2]), "stock": r[3]} for r in rows]
 
-    # ③ 写回 Redis（30 秒过期）
+    # ③ 写回 Redis（30 秒过期；列表为空也缓存，防空表穿透）
     r.set("product:list", json.dumps(data, ensure_ascii=False), ex=30)
     print("🐢 查了 MySQL，已写入缓存")
 
     return jsonify(data)
+
+
+# ---------- 接口：商品详情（Day 16 升级：布隆过滤 + 缓存空值 + 互斥锁） ----------
+# 布隆过滤器名单：真实存在的商品 id（教学用 set 模拟；真实项目用 Redis 布隆结构）
+PRODUCT_BLOOM = {1, 2, 3}
+
+
+@app.route("/product/<int:product_id>")
+def product_detail(product_id):
+    """商品详情接口：
+    ① 布隆过滤     → 不存在的 id 直接 404（0 次 MySQL）防穿透
+    ② 缓存空值     → 查不到的也缓存 30 秒，防穿透
+    ③ SET NX 互斥锁 → 缓存 miss 瞬间只让 1 个请求查库，防击穿
+    """
+    # ① 布隆过滤：不在名单的假 id 直接挡（根本不碰缓存和 MySQL）
+    if product_id not in PRODUCT_BLOOM:
+        print(f"🛡️ 布隆拦截：id={product_id} 不在名单，直接 404")
+        return jsonify({"error": "商品不存在"}), 404
+
+    r = get_redis()
+    cache_key = f"product:{product_id}"
+
+    # ② 查缓存（可能是空值：查不到的也缓存了 30 秒）
+    cached = r.get(cache_key)
+    if cached is not None:
+        if cached:
+            return jsonify(json.loads(cached))          # 有值 → 直接返回
+        return jsonify({"error": "商品不存在"}), 404    # 空值缓存 → 还是不存在
+
+    # ③ 缓存 miss → 抢"重建缓存"的锁（防击穿：只让 1 个请求进 MySQL）
+    lock_key = f"lock:product:{product_id}"
+    got_lock = r.set(lock_key, "rebuilding", nx=True, ex=5)
+    if not got_lock:
+        # 有人正在查库重建，等 50 毫秒再看缓存（别人马上写好了）
+        time.sleep(0.05)
+        cached = r.get(cache_key)
+        if cached:
+            return jsonify(json.loads(cached))
+        return jsonify({"error": "商品不存在"}), 404
+
+    # ④ 抢到锁的人查 MySQL（只有这一个请求打库）
+    try:
+        conn = get_mysql()
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, price, stock FROM product WHERE id = %s", (product_id,))
+        row = cur.fetchone()
+        conn.close()
+
+        if row:
+            data = {"id": row[0], "name": row[1], "price": float(row[2]), "stock": row[3]}
+            r.set(cache_key, json.dumps(data, ensure_ascii=False), ex=30)
+            print(f"🐢 查了 MySQL（{product_id}），已写缓存")
+            return jsonify(data)
+        else:
+            # ⑤ 查不到 → 空值也缓存 30 秒（防穿透：下次直接命中空缓存）
+            r.set(cache_key, "", ex=30)
+            print(f"🛡️ 缓存空值：{product_id} 不存在，已记住 30 秒")
+            return jsonify({"error": "商品不存在"}), 404
+    finally:
+        r.delete(lock_key)   # 释放重建锁
 
 
 # ---------- 接口 3：注册用户（POST = 向服务器"提交数据"） ----------
