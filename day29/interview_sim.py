@@ -78,7 +78,7 @@ BANK = [
     {"cat": "redis", "q": "缓存和数据库一致性怎么保证？",
      "a": "先更新 DB 后删缓存(延迟双删)，读时回源重建。核心：DB 是权威，缓存可删。我商城写主库→删缓存→下次查询重建。"},
     {"cat": "redis", "q": "Redis 内存淘汰策略？",
-     "a": "8 种：noeviction(满了报错)/allkeys-lru(所有 key 最近最少用)/volatile-lru(只淘汰带过期时间的)。缓存场景常用 allkeys-lru。我设 maxmemory 实测自动淘汰不报错。"},
+     "a": "8 种=范围×规则：范围 allkeys(全参与)/volatile(只踢带过期时间的)；规则 lru(最久没碰)/lfu(用得最少)/random(随机)/ttl(最快过期)。默认 noeviction=满了报错拒收；缓存场景推荐 allkeys-lru：踢最久没碰的损失最小。我设 maxmemory+allkeys-lru 实测：塞满自动淘汰旧 key 不报错。"},
 
     # ---------- 项目 ----------
     {"cat": "project", "q": "讲一下你的项目（10 分钟模板）",

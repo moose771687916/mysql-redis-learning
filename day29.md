@@ -199,9 +199,9 @@
 
 ### Q30. Redis 内存淘汰策略？
 
-- **一句话**：内存满了按策略淘汰：LRU（最近最少用）/LFU（最不常用）等 8 种。
-- **展开**：默认 noeviction=满了直接报错（安全但不可用）；常用 allkeys-lru=所有 key 按最近最少用淘汰（缓存场景最合适）；volatile-lru=只淘汰设置了过期时间的 key。
-- **实战**：我设过 maxmemory + allkeys-lru：塞满后自动淘汰旧 key，服务不报错。
+- **一句话**：内存满了按策略淘汰，共 8 种：范围（allkeys 全参与 / volatile 只踢带过期时间的）× 规则（lru 最久没碰 / lfu 用得最少 / random 随机 / ttl 最快过期）。
+- **展开**：8 种 = `noeviction`（默认，满了报错）/ `allkeys-lru` / `allkeys-lfu` / `allkeys-random` / `volatile-lru` / `volatile-lfu` / `volatile-random` / `volatile-ttl`。缓存场景推荐 `allkeys-lru`：踢掉最久没碰的 key，损失最小。
+- **实战**：我设 `maxmemory 50mb` + `allkeys-lru`，塞满后 Redis 自动淘汰旧 key、新数据照常写入不报错；若用默认 noeviction 塞满会报 OOM 拒收。
 
 ---
 
