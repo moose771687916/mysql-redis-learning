@@ -1,7 +1,7 @@
 # MySQL + Redis 从零实战学习仓库
 
-> 一个编程新手用 21 天，从零学完 MySQL + Redis，并亲手搭出**电商商城**的完整学习记录。
-> 每天一个总结文档（`day01.md` ~ `day21.md`）+ 可运行的实战代码。
+> 一个编程新手用 22 天，从零学完 MySQL + Redis，并亲手搭出**电商商城**的完整学习记录。
+> 每天一个总结文档（`day01.md` ~ `day22.md`）+ 可运行的实战代码。
 
 ## 这是什么
 
@@ -36,12 +36,13 @@
 | Day 19 | 秒杀接口实战（队列接进商城） | /seckill 秒回排队 + worker 异步下单，1000 人全响应 |
 | Day 20 | Redis 主从复制 | 一主一从：主写从读、全量同步、从库只读、断线补账 |
 | Day 21 | 哨兵自动故障转移 | 主库倒下 5 秒自动扶正，数据不丢、业务不停 |
+| Day 22 | 读写分离版商城 | 读走从库写走主库，熔断降级自动切回 |
 
 ## 目录结构
 
 ```
-├── day01.md ~ day21.md      # 每天的学习总结
-├── day01/ ~ day21/          # 每天的可运行代码（按天归档）
+├── day01.md ~ day22.md      # 每天的学习总结
+├── day01/ ~ day22/          # 每天的可运行代码（按天归档）
 │   ├── my_first_query.py    # 第一天：第一条 SELECT
 │   ├── create_order.py      # 事务下单（含超买回滚演示）
 │   ├── seckill_demo.py      # 秒杀：1000 人抢 13 件
@@ -53,6 +54,7 @@
 │   ├── seckill_queue_demo.py # 秒杀接口全链路：1000 人抢 13 件
 │   ├── replication_demo.py  # 主从复制：一主一从主写从读
 │   ├── failover_demo.py     # 哨兵故障转移：主库倒下自动扶正
+│   ├── read_write_demo.py   # 读写分离商城：读走从库写走主库+熔断降级
 │   └── ...
 ├── app.py                   # 电商商城后端（Flask + MySQL + Redis）
 ├── static/shop.html         # 商城前端页面
@@ -69,7 +71,8 @@
 
 1. 启动 MySQL（`day01/start_mysql.bat`，**端口 4306**）与 Redis
 2. 运行商城：`python app.py` → 浏览器打开 `http://localhost:5000`
-3. 跑演示脚本：`python day18/mq_demo.py`（队列削峰）、`python day19/seckill_queue_demo.py`（秒杀接口全链路）、`python day20/replication_demo.py`（主从复制）、`python day21/failover_demo.py`（哨兵故障转移）等
+3. 跑演示脚本：`python day18/mq_demo.py`（队列削峰）、`python day19/seckill_queue_demo.py`（秒杀接口全链路）、`python day20/replication_demo.py`（主从复制）、`python day21/failover_demo.py`（哨兵故障转移）、`python day22/read_write_demo.py`（读写分离商城）等
 
 > 注：本地 MySQL 连接密码为教学用简单密码，仅限本地学习环境；
 > 端口用 4306 是因为 Windows 会随机保留端口区间（Hyper-V），3306/3307 曾被系统锁死。
+> 商城支持读写分离：`set REDIS_RO_PORT=6380` 后再 `python app.py`，读接口走从库（见 day22）。

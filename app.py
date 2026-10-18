@@ -43,6 +43,31 @@ def get_redis():
     return redis.Redis(host="127.0.0.1", port=6379, decode_responses=True)
 
 
+# ---------- 读写分离（Day 22：读走从库，写走主库） ----------
+# 通过环境变量 REDIS_RO_PORT 开启：不设置 = 单机模式（行为和以前完全一样）
+# 设置（如 6380）= 读接口从从库读缓存；从库挂了自动"熔断"5 秒并降级主库
+RO_PORT = int(os.environ.get("REDIS_RO_PORT") or 0)
+_ro_down_until = 0.0   # 熔断截止时间（真实生产：从库故障时不再每请求试探）
+
+
+def get_redis_ro():
+    """读专用连接：优先从库（读分流）；从库不可用 → 熔断 5 秒并降级主库"""
+    global _ro_down_until
+    if not RO_PORT:
+        return get_redis()   # 没配从库 → 和以前一样用主库
+    if time.time() < _ro_down_until:
+        return get_redis()   # 熔断中 → 直接走主库，不再试探从库
+    try:
+        ro = redis.Redis(host="127.0.0.1", port=RO_PORT, decode_responses=True,
+                         socket_connect_timeout=1)   # 快速失败：从库连接超 1 秒就算挂
+        ro.ping()
+        return ro
+    except Exception:
+        print("⚠️ 从库不可用，熔断 5 秒，读降级回主库")
+        _ro_down_until = time.time() + 5
+        return get_redis()
+
+
 # ---------- 接口 1：商城首页（返回网页） ----------
 @app.route("/")
 def home():
@@ -54,11 +79,13 @@ def home():
 # ---------- 接口 2：商品列表（MySQL + Redis 缓存） ----------
 @app.route("/products")
 def products():
-    """商品列表接口：先问缓存，没有再查数据库并写回缓存"""
-    r = get_redis()
+    """商品列表接口：先问缓存（读走从库），没有再查数据库并写回缓存（写走主库）
+    缓存写在主库 → 主从自动同步 → 从库读到的就是最新缓存（读写分离）"""
+    r = get_redis()        # 主库：负责写
+    ro = get_redis_ro()    # 从库：负责读（挂了自动降级主库）
 
-    # ① 先问 Redis
-    cached = r.get("product:list")
+    # ① 先问 Redis（读接口优先从库，挂了自动降级主库）
+    cached = ro.get("product:list")
     if cached is not None:
         print("⚡ 命中缓存（没碰数据库）")
         return jsonify(json.loads(cached))
@@ -72,10 +99,9 @@ def products():
 
     data = [{"id": r[0], "name": r[1], "price": float(r[2]), "stock": r[3]} for r in rows]
 
-    # ③ 写回 Redis（30 秒过期；列表为空也缓存，防空表穿透）
+    # ③ 写回 Redis（写主库，30 秒过期；列表为空也缓存，防空表穿透）
     r.set("product:list", json.dumps(data, ensure_ascii=False), ex=30)
-    print("🐢 查了 MySQL，已写入缓存")
-
+    print("🐢 查了 MySQL，已写入缓存（主库），从库稍后自动同步")
     return jsonify(data)
 
 
@@ -96,23 +122,24 @@ def product_detail(product_id):
         print(f"🛡️ 布隆拦截：id={product_id} 不在名单，直接 404")
         return jsonify({"error": "商品不存在"}), 404
 
-    r = get_redis()
+    r = get_redis()        # 主库：抢锁 + 写回缓存（保证全局唯一、同步给从库）
+    ro = get_redis_ro()    # 从库：读缓存（挂了自动降级主库）
     cache_key = f"product:{product_id}"
 
-    # ② 查缓存（可能是空值：查不到的也缓存了 30 秒）
-    cached = r.get(cache_key)
+    # ② 查缓存（读从库；可能是空值：查不到的也缓存了 30 秒）
+    cached = ro.get(cache_key)
     if cached is not None:
         if cached:
             return jsonify(json.loads(cached))          # 有值 → 直接返回
         return jsonify({"error": "商品不存在"}), 404    # 空值缓存 → 还是不存在
 
-    # ③ 缓存 miss → 抢"重建缓存"的锁（防击穿：只让 1 个请求进 MySQL）
+    # ③ 缓存 miss → 抢"重建缓存"的锁（主库抢锁，防击穿：只让 1 个请求进 MySQL）
     lock_key = f"lock:product:{product_id}"
     got_lock = r.set(lock_key, "rebuilding", nx=True, ex=5)
     if not got_lock:
         # 有人正在查库重建，等 50 毫秒再看缓存（别人马上写好了）
         time.sleep(0.05)
-        cached = r.get(cache_key)
+        cached = ro.get(cache_key)
         if cached:
             return jsonify(json.loads(cached))
         return jsonify({"error": "商品不存在"}), 404
