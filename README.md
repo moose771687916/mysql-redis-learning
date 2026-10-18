@@ -1,7 +1,7 @@
 # MySQL + Redis 从零实战学习仓库
 
-> 一个编程新手用 19 天，从零学完 MySQL + Redis，并亲手搭出**电商商城**的完整学习记录。
-> 每天一个总结文档（`day01.md` ~ `day19.md`）+ 可运行的实战代码。
+> 一个编程新手用 20 天，从零学完 MySQL + Redis，并亲手搭出**电商商城**的完整学习记录。
+> 每天一个总结文档（`day01.md` ~ `day20.md`）+ 可运行的实战代码。
 
 ## 这是什么
 
@@ -34,12 +34,13 @@
 | Day 17 | MySQL 执行计划 EXPLAIN | 10 万条数据 8 场景实测索引失效 |
 | Day 18 | Redis 消息队列削峰 | LPUSH/BRPOP 排队消化，直连 vs 队列实测 |
 | Day 19 | 秒杀接口实战（队列接进商城） | /seckill 秒回排队 + worker 异步下单，1000 人全响应 |
+| Day 20 | Redis 主从复制 | 一主一从：主写从读、全量同步、从库只读、断线补账 |
 
 ## 目录结构
 
 ```
-├── day01.md ~ day19.md      # 每天的学习总结
-├── day01/ ~ day19/          # 每天的可运行代码（按天归档）
+├── day01.md ~ day20.md      # 每天的学习总结
+├── day01/ ~ day20/          # 每天的可运行代码（按天归档）
 │   ├── my_first_query.py    # 第一天：第一条 SELECT
 │   ├── create_order.py      # 事务下单（含超买回滚演示）
 │   ├── seckill_demo.py      # 秒杀：1000 人抢 13 件
@@ -49,6 +50,7 @@
 │   ├── explain_demo.py      # EXPLAIN 执行计划：8 场景索引失效实测
 │   ├── mq_demo.py           # 消息队列削峰：直连 vs LPUSH/BRPOP 队列实测
 │   ├── seckill_queue_demo.py # 秒杀接口全链路：1000 人抢 13 件
+│   ├── replication_demo.py  # 主从复制：一主一从主写从读
 │   └── ...
 ├── app.py                   # 电商商城后端（Flask + MySQL + Redis）
 ├── static/shop.html         # 商城前端页面
@@ -65,7 +67,7 @@
 
 1. 启动 MySQL（`day01/start_mysql.bat`，**端口 4306**）与 Redis
 2. 运行商城：`python app.py` → 浏览器打开 `http://localhost:5000`
-3. 跑演示脚本：`python day18/mq_demo.py`（队列削峰）、`python day19/seckill_queue_demo.py`（秒杀接口全链路）等
+3. 跑演示脚本：`python day18/mq_demo.py`（队列削峰）、`python day19/seckill_queue_demo.py`（秒杀接口全链路）、`python day20/replication_demo.py`（主从复制）等
 
 > 注：本地 MySQL 连接密码为教学用简单密码，仅限本地学习环境；
 > 端口用 4306 是因为 Windows 会随机保留端口区间（Hyper-V），3306/3307 曾被系统锁死。
