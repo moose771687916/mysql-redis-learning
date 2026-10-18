@@ -30,7 +30,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def get_mysql():
     return pymysql.connect(
-        host="127.0.0.1", user="root", password="root123",
+        host="127.0.0.1", port=4306, user="root", password="root123",
         database="my_first_db", charset="utf8mb4"
     )
 

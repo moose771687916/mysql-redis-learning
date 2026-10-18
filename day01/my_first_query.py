@@ -5,7 +5,7 @@ import pymysql
 
 # 第 1 步：连接数据库（相当于拿钥匙开门）
 conn = pymysql.connect(
-    host='127.0.0.1',      # MySQL 在哪：本机
+    host="127.0.0.1", port=4306,      # MySQL 在哪：本机
     user='root',           # 账号
     password='root123',    # 密码
     database='my_first_db', # 进哪个库

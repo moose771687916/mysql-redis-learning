@@ -23,7 +23,7 @@ PEOPLE = 100          # 100 人抢
 
 
 def mkconn():
-    return pymysql.connect(host="127.0.0.1", user="root", password="root123",
+    return pymysql.connect(host="127.0.0.1", port=4306, user="root", password="root123",
                            database="my_first_db", charset="utf8mb4", autocommit=True)
 
 
@@ -60,7 +60,7 @@ def buy(user_id, use_fix):
     死锁（1213）是并发常态：生产代码必须捕获后自动重试"""
     global success
     for attempt in range(5):
-        conn = pymysql.connect(host="127.0.0.1", user="root", password="root123",
+        conn = pymysql.connect(host="127.0.0.1", port=4306, user="root", password="root123",
                                database="my_first_db", charset="utf8mb4", autocommit=False)
         cur = conn.cursor()
         try:

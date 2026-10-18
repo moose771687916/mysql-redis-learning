@@ -5,7 +5,7 @@ import pymysql
 
 # 连接数据库
 conn = pymysql.connect(
-    host='127.0.0.1',
+    host="127.0.0.1", port=4306,
     user='root',
     password='root123',
     database='my_first_db',

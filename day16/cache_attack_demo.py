@@ -20,7 +20,7 @@ import pymysql
 import redis
 
 # ===== 连接 =====
-db = pymysql.connect(host="127.0.0.1", user="root", password="root123",
+db = pymysql.connect(host="127.0.0.1", port=4306, user="root", password="root123",
                      database="my_first_db", charset="utf8mb4")
 r = redis.Redis(host="127.0.0.1", port=6379, decode_responses=True)
 

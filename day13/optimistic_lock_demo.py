@@ -16,7 +16,7 @@ import pymysql
 
 
 def mkconn():
-    return pymysql.connect(host="127.0.0.1", user="root", password="root123",
+    return pymysql.connect(host="127.0.0.1", port=4306, user="root", password="root123",
                            database="my_first_db", charset="utf8mb4", autocommit=True)
 
 

@@ -27,7 +27,7 @@ import pymysql
 
 N = 100000        # 造 10 万条（够看出差距，又不至于等太久）
 
-conn = pymysql.connect(host="127.0.0.1", user="root", password="root123",
+conn = pymysql.connect(host="127.0.0.1", port=4306, user="root", password="root123",
                        database="my_first_db", charset="utf8mb4")
 cur = conn.cursor()
 

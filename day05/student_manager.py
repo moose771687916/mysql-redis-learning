@@ -17,7 +17,7 @@ import pymysql
 # ---------- 连接数据库 ----------
 def connect():
     return pymysql.connect(
-        host="127.0.0.1",          # 本机
+        host="127.0.0.1", port=4306,          # 本机
         user="root",
         password="root123",
         database="my_first_db",
