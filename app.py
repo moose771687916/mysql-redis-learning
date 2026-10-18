@@ -46,6 +46,34 @@ def get_mysql():
     )
 
 
+# ---------- MySQL 读写分离（Day 24：读走从库 4307，写走主库 4306） ----------
+# 通过环境变量 MYSQL_RO_PORT 开启：不设置 = 单机模式（行为和以前完全一样）
+# 设置（如 4307）= 纯读接口（商品列表/详情/购物车/订单查询）从从库读；
+# 从库挂了自动"熔断"5 秒并降级主库
+MYSQL_RO_PORT = int(os.environ.get("MYSQL_RO_PORT") or 0)
+_mysql_ro_down_until = 0.0   # 熔断截止时间
+
+
+def get_mysql_ro():
+    """读专用连接：优先从库（读分流）；从库不可用 → 熔断 5 秒并降级主库"""
+    global _mysql_ro_down_until
+    if not MYSQL_RO_PORT:
+        return get_mysql()   # 没配从库 → 和以前一样用主库
+    if time.time() < _mysql_ro_down_until:
+        return get_mysql()   # 熔断中 → 直接走主库，不再试探从库
+    try:
+        ro = pymysql.connect(
+            host="127.0.0.1", port=MYSQL_RO_PORT, user="root", password="",
+            database="my_first_db", charset="utf8mb4",
+            connect_timeout=1, read_timeout=2)   # 快速失败：从库连接超 1 秒就算挂
+        ro.ping()
+        return ro
+    except Exception:
+        print("⚠️ MySQL 从库不可用，熔断 5 秒，读降级回主库")
+        _mysql_ro_down_until = time.time() + 5
+        return get_mysql()
+
+
 def get_redis():
     return redis.Redis(host="127.0.0.1", port=6379, decode_responses=True)
 
@@ -97,8 +125,8 @@ def products():
         print("⚡ 命中缓存（没碰数据库）")
         return jsonify(json.loads(cached))
 
-    # ② 没有 → 查 MySQL
-    conn = get_mysql()
+    # ② 没有 → 查 MySQL（读走从库，写回缓存的商品数据由主从自动同步）
+    conn = get_mysql_ro()
     cur = conn.cursor()
     cur.execute("SELECT id, name, price, stock FROM product")
     rows = cur.fetchall()
@@ -151,9 +179,9 @@ def product_detail(product_id):
             return jsonify(json.loads(cached))
         return jsonify({"error": "商品不存在"}), 404
 
-    # ④ 抢到锁的人查 MySQL（只有这一个请求打库）
+    # ④ 抢到锁的人查 MySQL（只有这一个请求打库；读走从库）
     try:
-        conn = get_mysql()
+        conn = get_mysql_ro()
         cur = conn.cursor()
         cur.execute("SELECT id, name, price, stock FROM product WHERE id = %s", (product_id,))
         row = cur.fetchone()
@@ -284,7 +312,7 @@ def cart_list():
     if not user_id:
         return jsonify({"error": "缺少 user_id"}), 400
 
-    conn = get_mysql()
+    conn = get_mysql_ro()   # 查看购物车 = 纯读，走从库
     cur = conn.cursor()
     try:
         cur.execute("""
@@ -379,7 +407,7 @@ def my_orders():
     if not user_id:
         return jsonify({"error": "缺少 user_id"}), 400
 
-    conn = get_mysql()
+    conn = get_mysql_ro()   # 查订单 = 纯读，走从库
     cur = conn.cursor()
     try:
         cur.execute("SELECT id, total, created_at FROM orders WHERE user_id = %s ORDER BY id DESC", (user_id,))
