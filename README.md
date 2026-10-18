@@ -1,7 +1,7 @@
 # MySQL + Redis 从零实战学习仓库
 
-> 一个编程新手用 25 天，从零学完 MySQL + Redis，并亲手搭出**电商商城**的完整学习记录。
-> 每天一个总结文档（`day01.md` ~ `day25.md`）+ 可运行的实战代码。
+> 一个编程新手用 26 天，从零学完 MySQL + Redis，并亲手搭出**电商商城**的完整学习记录。
+> 每天一个总结文档（`day01.md` ~ `day26.md`）+ 可运行的实战代码。
 
 ## 这是什么
 
@@ -40,6 +40,7 @@
 | Day 23 | MySQL 主从复制 | binlog 增量同步，主写从读、删也同步、掉线补账 |
 | Day 24 | MySQL 读写分离落地商城 | 读走从库写走主库，熔断降级自动切回 |
 | Day 25 | MySQL 主库故障转移 | 宕机→从库提权扶正（数据完整可写）→旧主恢复挂回 |
+| Day 26 | Redis Cluster 真集群 | WSL 6 节点：16384 槽分片、扩容迁槽、从节点自动顶班 |
 
 ## 目录结构
 
@@ -61,6 +62,7 @@
 │   ├── mysql_replication_demo.py # MySQL 主从复制：binlog 增量同步
 │   ├── mysql_read_write_demo.py  # MySQL 读写分离商城：读走从库写走主库
 │   ├── mysql_failover_demo.py    # MySQL 主库故障转移：宕机→扶正→恢复
+│   ├── redis_cluster_demo.py     # Redis Cluster 真集群：WSL 6 节点分片+扩容+故障转移
 │   └── ...
 ├── app.py                   # 电商商城后端（Flask + MySQL + Redis）
 ├── static/shop.html         # 商城前端页面
@@ -77,7 +79,7 @@
 
 1. 启动 MySQL（`day01/start_mysql.bat`，**端口 4306**）与 Redis
 2. 运行商城：`python app.py` → 浏览器打开 `http://localhost:5000`
-3. 跑演示脚本：`python day18/mq_demo.py`（队列削峰）、`python day19/seckill_queue_demo.py`（秒杀接口全链路）、`python day20/replication_demo.py`（Redis 主从复制）、`python day21/failover_demo.py`（哨兵故障转移）、`python day22/read_write_demo.py`（读写分离商城）、`python day23/mysql_replication_demo.py`（MySQL 主从复制）、`python day24/mysql_read_write_demo.py`（MySQL 读写分离商城）、`python day25/mysql_failover_demo.py`（MySQL 主库故障转移）等
+3. 跑演示脚本：`python day18/mq_demo.py`（队列削峰）、`python day19/seckill_queue_demo.py`（秒杀接口全链路）、`python day20/replication_demo.py`（Redis 主从复制）、`python day21/failover_demo.py`（哨兵故障转移）、`python day22/read_write_demo.py`（读写分离商城）、`python day23/mysql_replication_demo.py`（MySQL 主从复制）、`python day24/mysql_read_write_demo.py`（MySQL 读写分离商城）、`python day25/mysql_failover_demo.py`（MySQL 主库故障转移）、`python day26/redis_cluster_demo.py`（Redis Cluster 真集群，需 WSL）等
 
 > 注：本地 MySQL 连接密码为教学用简单密码，仅限本地学习环境；
 > 端口用 4306 是因为 Windows 会随机保留端口区间（Hyper-V），3306/3307 曾被系统锁死。
