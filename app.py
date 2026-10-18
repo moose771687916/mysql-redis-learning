@@ -20,8 +20,15 @@ import pymysql
 import redis
 import json
 import os
+import sys
 import time
 import threading
+
+# 强制 UTF-8 输出：Windows 控制台/管道默认 GBK，emoji（⚡🐢👷）打印会崩成 500
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 app = Flask(__name__)
 
