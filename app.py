@@ -21,11 +21,15 @@ import redis
 import json
 import os
 import time
+import threading
 
 app = Flask(__name__)
 
 # 项目根目录（无论从哪个目录启动都能找到 static 文件夹）
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 秒杀队列（Day 18/19：Redis List 削峰）
+SECKILL_QUEUE = "seckill:queue"
 
 
 def get_mysql():
@@ -416,6 +420,133 @@ def order():
         conn.close()
 
 
+# ---------- 秒杀队列（Day 18/19：Redis 削峰 + 异步消化） ----------
+def process_seckill(msg):
+    """后台 worker 真正执行秒杀：原子扣库存 + 写订单（就是 Day 14 防超卖那套）"""
+    data = json.loads(msg)
+    user_id, product_id, quantity = data["user_id"], data["product_id"], data["quantity"]
+    conn = get_mysql()
+    cur = conn.cursor()
+
+    def give_back():
+        """处理失败 → 把 Redis 预扣的库存还回去（闭环）"""
+        get_redis().incr(f"seckill:stock:{product_id}", quantity)
+
+    try:
+        # ① 查商品价格和库存
+        cur.execute("SELECT price, stock FROM product WHERE id = %s", (product_id,))
+        row = cur.fetchone()
+        if not row:
+            give_back()
+            return {"status": "失败", "error": "商品不存在"}
+        price, stock = row
+        if stock < quantity:
+            give_back()
+            return {"status": "手慢了", "error": f"库存不足，只剩 {stock} 件"}
+
+        # ② 写订单 + 明细
+        total = price * quantity
+        cur.execute("INSERT INTO orders (user_id, total) VALUES (%s, %s)", (user_id, total))
+        order_id = cur.lastrowid
+        cur.execute(
+            "INSERT INTO order_item (order_id, product_id, quantity, price) VALUES (%s, %s, %s, %s)",
+            (order_id, product_id, quantity, price)
+        )
+        # ③ 原子扣库存（0 行 = 手慢了 → 回滚 + 回补）
+        n = cur.execute(
+            "UPDATE product SET stock = stock - %s WHERE id = %s AND stock >= %s",
+            (quantity, product_id, quantity))
+        if n == 0:
+            conn.rollback()
+            give_back()
+            return {"status": "手慢了", "error": "库存不足"}
+
+        conn.commit()
+        get_redis().delete("product:list")   # 库存变了，缓存失效
+        return {"status": "成功", "order_id": order_id, "total": float(total)}
+    except Exception as e:
+        conn.rollback()
+        give_back()
+        return {"status": "失败", "error": str(e)}
+    finally:
+        conn.close()
+
+
+def seckill_worker():
+    """后台消费者：BRPOP 从队列叫号，叫到一个处理一个（削峰填谷）
+    带 try 保护：单条消息处理失败不影响 worker 继续跑（真实架构底线）"""
+    r = get_redis()
+    print("👷 秒杀 worker 已启动，开始排队消化...")
+    while True:
+        try:
+            msg = r.brpop(SECKILL_QUEUE, timeout=5)   # 队列空就等 5 秒
+            if msg is None:
+                continue
+            body = msg[1]
+            result = process_seckill(body)
+            data = json.loads(body)
+            # 结果写回 Redis，用户通过 /seckill/result 查询
+            r.set(f"seckill:result:{data['user_id']}", json.dumps(result, ensure_ascii=False), ex=600)
+            print(f"⚡ 处理 {data['user_id']} 抢 {data['product_id']}：{result['status']}")
+        except Exception as e:
+            print(f"⚠️ worker 遇到异常继续跑：{e}")
+
+
+@app.route("/seckill", methods=["POST"])
+def seckill():
+    """秒杀接口（削峰版）：Redis 预扣库存粗筛 → 进队秒回；worker 后台消化写 MySQL
+    接口层只碰 Redis（1000 并发无压力），MySQL 只被 worker 慢吞吞地访问"""
+    data = request.get_json()
+    user_id = data.get("user_id")
+    product_id = data.get("product_id")
+    quantity = data.get("quantity", 1)
+
+    r = get_redis()
+    stock_key = f"seckill:stock:{product_id}"
+
+    # ① 预扣库存（原子 DECR）。首次秒杀时 key 不存在 → 从 MySQL 读一次初始化
+    if not r.exists(stock_key):
+        conn = get_mysql()
+        cur = conn.cursor()
+        cur.execute("SELECT stock FROM product WHERE id = %s", (product_id,))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return jsonify({"error": "商品不存在"}), 404
+        r.set(stock_key, row[0])
+
+    left = r.decr(stock_key, quantity)
+    if left < 0:
+        r.incr(stock_key, quantity)          # 扣过头了，还回去
+        return jsonify({"status": "售罄", "message": "手慢了，商品已被抢光"}), 200
+
+    # ② 预扣成功 → 进队（LPUSH）→ 秒回。真正下单由后台 worker 异步做
+    msg = json.dumps({"user_id": user_id, "product_id": product_id, "quantity": quantity},
+                     ensure_ascii=False)
+    r.lpush(SECKILL_QUEUE, msg)
+    queue_len = r.llen(SECKILL_QUEUE)
+    return jsonify({"status": "排队中", "queue_len": queue_len,
+                    "message": f"已收到你的抢购请求（{user_id} 抢商品 {product_id}），排队中..."})
+
+
+@app.route("/seckill/result")
+def seckill_result():
+    """查抢购结果：排队中 / 成功 / 手慢了 / 失败"""
+    user_id = request.args.get("user_id")
+    if not user_id:
+        return jsonify({"error": "缺少 user_id"}), 400
+    r = get_redis()
+    cached = r.get(f"seckill:result:{user_id}")
+    if cached is None:
+        return jsonify({"status": "排队中", "message": "还在排队，稍后再查"})
+    return jsonify(json.loads(cached))
+
+
 if __name__ == "__main__":
-    # debug=True：改代码后自动重启；port=5000：浏览器访问的端口
-    app.run(debug=True, port=5000)
+    from werkzeug.serving import run_simple
+    # 先启动后台 worker（消费秒杀队列），再启动 Flask
+    threading.Thread(target=seckill_worker, daemon=True).start()
+    # threaded=True：多线程处理并发请求（秒杀必需；开发服务器连接数有限，
+    # 真实生产用 gunicorn 等多进程 WSGI 服务器扛百万连接）
+    run_simple("127.0.0.1", 5000, app,
+               use_debugger=True, use_reloader=False, threaded=True)
