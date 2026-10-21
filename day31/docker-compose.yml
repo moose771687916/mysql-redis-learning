@@ -1,0 +1,89 @@
+# Day 31：终极商城 4 容器编排 —— 一条命令 docker compose up -d 起全套
+#
+# 端口说明（避开本机已占用的 4306/4307/6379）：
+#   4308 -> mysql-master 容器内 3306
+#   4309 -> mysql-slave  容器内 3306
+#   6380 -> redis        容器内 6379
+#   5001 -> app          Flask API
+# 容器之间用服务名互通（mysql-master:3306 / redis:6379），不走映射端口。
+
+services:
+  mysql-master:
+    image: mysql:8.0
+    container_name: shop-mysql-master
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+    ports:
+      - "4308:3306"
+    command:
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+    volumes:
+      - master-data:/var/lib/mysql
+      - ./mysql/master-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -proot123"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  mysql-slave:
+    image: mysql:8.0
+    container_name: shop-mysql-slave
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+    ports:
+      - "4309:3306"
+    command:
+      - --server-id=2
+      - --read_only=1
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+    volumes:
+      - slave-data:/var/lib/mysql
+      - ./mysql/slave-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -proot123"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: shop-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: ./app
+    container_name: shop-app
+    ports:
+      - "5001:5001"
+    environment:
+      DB_MASTER_HOST: mysql-master
+      DB_SLAVE_HOST: mysql-slave
+      REDIS_HOST: redis
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+      mysql-slave:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  master-data:
+  slave-data:
