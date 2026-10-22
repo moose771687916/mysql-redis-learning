@@ -149,6 +149,14 @@ async function cartRemove(pid) {
   loadCart();
 }
 
+async function payOrder(oid) {
+  const r = await api("/api/order/pay", { method: "POST", body: JSON.stringify({ order_id: oid }) });
+  const box = document.getElementById("me-box");
+  box.className = "result";
+  box.textContent = r.ok ? "✅ " + r.msg : "⚠️ " + r.error;
+  loadMe();
+}
+
 async function checkout() {
   const r = await api("/api/cart/checkout", { method: "POST", body: JSON.stringify({}) });
   if (r.ok) {
@@ -194,9 +202,13 @@ async function loadMe() {
   if (!r.orders || !r.orders.length) { box.textContent += " —— 还没有订单"; return; }
   table.style.display = "";
   const body = document.getElementById("orders-body");
-  body.innerHTML = r.orders.map(o =>
-    `<tr><td>${o.name || "商品 #" + o.product_id}</td><td>¥${o.amount}</td><td>${o.created_at}</td></tr>`
-  ).join("");
+  body.innerHTML = r.orders.map(o => {
+    const st = o.status === "paid" ? '<span class="tag tag-paid">已支付</span>'
+      : o.status === "cancelled" ? '<span class="tag tag-cancelled">已取消</span>'
+      : '<span class="tag tag-pending">待支付</span>';
+    const payBtn = o.status === "pending" ? `<button class="btn btn-sm btn-primary" onclick="payOrder(${o.id})">去支付</button>` : "";
+    return `<tr><td>${o.name || "商品 #" + o.product_id}</td><td>¥${o.amount}</td><td>${st}</td><td>${o.created_at}</td><td>${payBtn}</td></tr>`;
+  }).join("");
 }
 
 if (document.getElementById("me-box")) loadMe();

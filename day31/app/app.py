@@ -35,6 +35,7 @@ R = redis.Redis(host=os.getenv("REDIS_HOST", "127.0.0.1"),
                 port=6379, decode_responses=True)
 
 CONSUMERS = 3        # 消费者线程数
+ORDER_TTL = int(os.getenv("ORDER_TTL", "600"))   # 订单支付时限（秒）：超时自动取消
 slave_ok = True      # 熔断开关：True=读从库，False=读主库
 success_cnt = 0
 lock = threading.Lock()
@@ -161,8 +162,10 @@ def consumer(worker_id):
                 if n == 0:
                     continue
                 R.delete("product:1")              # ④ 扣库存成功 → 删缓存（Cache Aside：先改DB再删缓存，否则页面看到旧库存）
-                exe(conn, "INSERT INTO final_shop.orders(user_id, product_id, amount) "
-                          "VALUES(%s, 1, 2999.00)", (uid,))
+                exe(conn, "INSERT INTO final_shop.orders(user_id, product_id, amount, status) "
+                          "VALUES(%s, 1, 2999.00, 'pending')", (uid,))
+                oid = fetch(conn, "SELECT LAST_INSERT_ID() AS id")[0]["id"]
+                R.zadd("order:delay", {oid: time.time() + ORDER_TTL})   # ⑤ 延迟队列：超时未支付自动取消
                 with lock:
                     success_cnt += 1
             finally:
@@ -211,7 +214,7 @@ def me(payload):
     """我的信息：token → 用户 + 我的订单（JOIN 出商品名）"""
     uid = payload["uid"]
     orders = fetch(mysql(MASTER),
-                   "SELECT o.product_id, p.name, o.amount, o.created_at "
+                   "SELECT o.id, o.product_id, p.name, o.amount, o.status, o.created_at "
                    "FROM final_shop.orders o "
                    "LEFT JOIN final_shop.products p ON o.product_id=p.id "
                    "WHERE o.user_id=%s ORDER BY o.id DESC", uid)
@@ -441,10 +444,20 @@ def cart_checkout(payload):
                 if cur.rowcount == 0:
                     raise Exception(f"商品 #{pid} 库存不足")
                 price = fetch(conn, "SELECT price FROM final_shop.products WHERE id=%s", pid)[0]["price"]
-                cur.execute("INSERT INTO final_shop.orders(user_id, product_id, amount) "
-                            "VALUES(%s, %s, %s)", (uid, pid, price))
+                cur.execute("INSERT INTO final_shop.orders(user_id, product_id, amount, status) "
+                            "VALUES(%s, %s, %s, 'pending')", (uid, pid, price))
+                # 坑：扣了库存必须删缓存，否则页面/首页列表显示旧库存（用户实测踩过）
+                R.delete(f"product:{pid}")
+                R.delete("products:list")
                 total += float(price)
         conn.commit()
+        # 延迟队列：每笔订单超时未支付自动取消（ZSET score=过期时间戳）
+        for pid, qty in items.items():
+            rows = fetch(conn, "SELECT id FROM final_shop.orders "
+                               "WHERE user_id=%s AND product_id=%s AND status='pending' "
+                               "ORDER BY id DESC LIMIT 1", (uid, int(pid)))
+            if rows:
+                R.zadd("order:delay", {rows[0]["id"]: time.time() + ORDER_TTL})
         cur.close()
         R.delete(f"cart:{uid}")
         return jsonify({"ok": True, "msg": f"结算成功，共 {len(items)} 种商品，合计 ¥{total:.2f}",
@@ -452,6 +465,53 @@ def cart_checkout(payload):
     except Exception as e:
         conn.rollback()
         return jsonify({"error": "结算失败：" + str(e)}), 409
+
+
+@app.post("/api/order/pay")
+@require_auth
+def order_pay(payload):
+    """模拟支付：订单 pending → paid（并移出延迟队列，不再被自动取消）"""
+    uid = payload["uid"]
+    oid = (request.json or {}).get("order_id")
+    if not oid:
+        return jsonify({"error": "需要 order_id"}), 400
+    conn = mysql(MASTER)
+    cur = conn.cursor()
+    n = cur.execute("UPDATE final_shop.orders SET status='paid' "
+                    "WHERE id=%s AND user_id=%s AND status='pending'", (oid, uid))
+    conn.commit()
+    cur.close()
+    if n == 0:
+        return jsonify({"error": "订单不存在或不是待支付状态"}), 409
+    R.zrem("order:delay", oid)
+    return jsonify({"ok": True, "msg": f"支付成功，订单 #{oid} 已成交"})
+
+
+def order_watcher():
+    """订单超时自动取消：ZSET 延迟队列，每 2 秒扫到期订单 → 取消 + 库存回补"""
+    while True:
+        try:
+            now = time.time()
+            expired = R.zrangebyscore("order:delay", 0, now, start=0, num=50)
+            for oid in expired:
+                rows = fetch(mysql(MASTER), "SELECT status, product_id FROM final_shop.orders "
+                                            "WHERE id=%s", int(oid))
+                if not rows:
+                    R.zrem("order:delay", oid)
+                    continue
+                if rows[0]["status"] != "pending":
+                    R.zrem("order:delay", oid)     # 已支付/已取消：从队列摘掉
+                    continue
+                exe(mysql(MASTER), "UPDATE final_shop.orders SET status='cancelled' WHERE id=%s", int(oid))
+                # 库存回补：超时未支付 → 把扣掉的库存加回来 + 删缓存
+                exe(mysql(MASTER), "UPDATE final_shop.products SET stock=stock+1 "
+                                   "WHERE id=%s", rows[0]["product_id"])
+                R.delete(f"product:{rows[0]['product_id']}")
+                R.delete("products:list")
+                R.zrem("order:delay", oid)
+        except Exception:
+            time.sleep(1)      # 任何异常都别让线程死
+        time.sleep(2)
 
 
 # ---------- 页面（完整作品：打开浏览器就能用） ----------
@@ -495,4 +555,5 @@ if __name__ == "__main__":
             time.sleep(2)
     for i in range(CONSUMERS):
         threading.Thread(target=consumer, args=(i,), daemon=True).start()
+    threading.Thread(target=order_watcher, daemon=True).start()   # 订单超时自动取消
     app.run(host="0.0.0.0", port=5001)
