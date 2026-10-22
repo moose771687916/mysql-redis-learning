@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}购物车 - 终极商城{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>🛒 购物车</h1>
+  <p class="muted">Redis Hash 存储（cart:{uid} → 商品id:数量），结算走事务逐件扣库存</p>
+  <div id="cart-msg" class="result"></div>
+  <table class="orders" id="cart-table" style="display:none">
+    <thead><tr><th>商品</th><th>单价</th><th>数量</th><th>小计</th><th>操作</th></tr></thead>
+    <tbody id="cart-body"></tbody>
+  </table>
+  <div id="cart-total" class="price" style="margin-top:12px;"></div>
+  <button id="btn-checkout" class="btn btn-primary" style="margin-top:10px;display:none" onclick="checkout()">去结算</button>
+  <div id="cart-empty" class="muted">购物车是空的 —— 去首页把商品加进来</div>
+</div>
+{% endblock %}

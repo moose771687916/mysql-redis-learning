@@ -90,6 +90,10 @@ def failover():
                        capture_output=True, text=True)
     print(f"   docker stop → {r.stdout.strip()}")
     time.sleep(3)
+    # 坑：浏览器页面每秒轮询商品接口，reset 删的缓存会被立刻重建。
+    # 停从库后再删一次缓存，强制读走读源，否则断言被"缓存命中"干扰。
+    subprocess.run(["docker", "exec", "shop-redis", "redis-cli", "DEL", "product:1"],
+                   capture_output=True, text=True)
     try:
         r = http("GET", "/api/product/1")
         src = r.get("source", "?")

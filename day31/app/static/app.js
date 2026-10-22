@@ -79,15 +79,65 @@ async function loadProducts() {
   const r = await api("/api/products");
   if (r.error) return;
   const box = document.getElementById("products-list");
+  const head = `<div class="muted" style="margin-bottom:6px;">列表缓存：${r.cache} · 读源：${r.source || "--"}</div>`;
   const rows = r.data.map(p =>
     `<div class="product mini">
        <div class="product-info">
          <h2>${p.name}</h2>
          <div class="muted">库存 ${p.stock}</div>
        </div>
-       <div class="price">¥${p.price}</div>
+       <div style="text-align:right">
+         <div class="price">¥${p.price}</div>
+         <button class="btn btn-primary btn-sm" onclick="addCart(${p.id})">加入购物车</button>
+       </div>
      </div>`).join("");
-  box.innerHTML = rows;
+  box.innerHTML = head + rows;
+}
+
+// ---------- 购物车 ----------
+async function addCart(pid) {
+  const r = await api("/api/cart/add", { method: "POST", body: JSON.stringify({ product_id: pid }) });
+  if (r.ok) {
+    show("🛒 " + r.msg + "（可在导航栏「购物车」查看）");
+  } else {
+    show("需要先登录：" + r.error);
+    setTimeout(() => location.href = "/login", 1200);
+  }
+}
+
+async function loadCart() {
+  const r = await api("/api/cart");
+  const table = document.getElementById("cart-table");
+  const body = document.getElementById("cart-body");
+  const totalBox = document.getElementById("cart-total");
+  const btn = document.getElementById("btn-checkout");
+  const empty = document.getElementById("cart-empty");
+  if (r.error) { empty.textContent = "请先登录（" + r.error + "）"; return; }
+  if (!r.items.length) {
+    table.style.display = "none"; totalBox.textContent = ""; btn.style.display = "none";
+    empty.textContent = "购物车是空的 —— 去首页把商品加进来";
+    return;
+  }
+  empty.style.display = "none";
+  table.style.display = "";
+  body.innerHTML = r.items.map(it =>
+    `<tr>
+       <td>${it.name}</td><td>¥${it.price}</td>
+       <td>${it.qty}</td><td>¥${it.subtotal}</td>
+       <td><button class="btn btn-sm" onclick="checkout()">结算</button></td>
+     </tr>`).join("");
+  totalBox.textContent = "合计 ¥" + r.total;
+  btn.style.display = "";
+}
+
+async function checkout() {
+  const r = await api("/api/cart/checkout", { method: "POST", body: JSON.stringify({}) });
+  if (r.ok) {
+    document.getElementById("cart-msg").textContent = "✅ " + r.msg;
+    loadCart(); loadStats(); loadProducts();
+  } else {
+    document.getElementById("cart-msg").textContent = "⚠️ " + r.error;
+  }
 }
 
 // ---------- 登录 / 注册 ----------
@@ -131,3 +181,4 @@ async function loadMe() {
 }
 
 if (document.getElementById("me-box")) loadMe();
+if (document.getElementById("cart-body")) loadCart();

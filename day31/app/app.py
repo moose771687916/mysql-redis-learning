@@ -112,11 +112,14 @@ def read_row(pid):
             slave_ok = True          # 从库读成功 → 保持/恢复
         return rows, tag
     except Exception:
-        if src is MASTER:
+        # 坑：熔断中(src=MASTER)再读，src 是 MASTER，直接 raise 会把"从库探测失败"
+        # 误判成"主库也挂了"→ 返回 503。正确做法：熔断中照样读主库。
+        try:
+            rows = fetch(mysql(MASTER), "SELECT * FROM final_shop.products WHERE id=%s", pid)
+            slave_ok = False         # 从库没恢复 → 保持熔断
+            return rows, "主库(熔断)"
+        except Exception:
             raise                    # 主库也挂了 → 真的挂了
-        slave_ok = False             # 从库挂了 → 熔断
-        rows = fetch(mysql(MASTER), "SELECT * FROM final_shop.products WHERE id=%s", pid)
-        return rows, "主库(熔断)"
 
 
 # ---------- 消费者：从队列取请求，真正处理下单（同 day28 逻辑） ----------
@@ -247,11 +250,13 @@ def read_all():
             slave_ok = True
         return rows, tag
     except Exception:
-        if src is MASTER:
+        # 同 read_row 的坑：熔断中探测失败 ≠ 主库挂了，继续读主库
+        try:
+            rows = fetch(mysql(MASTER), "SELECT * FROM final_shop.products ORDER BY id")
+            slave_ok = False
+            return rows, "主库(熔断)"
+        except Exception:
             raise
-        slave_ok = False
-        rows = fetch(mysql(MASTER), "SELECT * FROM final_shop.products ORDER BY id")
-        return rows, "主库(熔断)"
 
 
 @app.get("/api/products")
@@ -314,6 +319,76 @@ def reset():
     return jsonify({"ok": True, "msg": "已重置：订单清空，库存=5，队列清空"})
 
 
+# ---------- 购物车（Redis Hash：cart:{uid} → field=商品id, value=数量） ----------
+@app.post("/api/cart/add")
+@require_auth
+def cart_add(payload):
+    """加入购物车：body {product_id}，数量累加"""
+    uid = payload["uid"]
+    pid = (request.json or {}).get("product_id")
+    if not pid:
+        return jsonify({"error": "需要 product_id"}), 400
+    rows = fetch(mysql(MASTER), "SELECT stock FROM final_shop.products WHERE id=%s", pid)
+    if not rows:
+        return jsonify({"error": "商品不存在"}), 404
+    R.hincrby(f"cart:{uid}", pid, 1)
+    return jsonify({"ok": True, "msg": f"已加入购物车（商品 #{pid}）"})
+
+
+@app.get("/api/cart")
+@require_auth
+def cart_list(payload):
+    """我的购物车：Redis 数量 + JOIN 商品价格，返回小计和总价"""
+    uid = payload["uid"]
+    items = R.hgetall(f"cart:{uid}")          # {商品id: 数量}
+    if not items:
+        return jsonify({"items": [], "total": "0.00", "msg": "购物车是空的"})
+    rows = fetch(mysql(MASTER), "SELECT id, name, price FROM final_shop.products "
+                                "WHERE id IN (%s)" % ",".join(["%s"] * len(items)),
+                 tuple(int(k) for k in items.keys()))
+    out, total = [], 0
+    for r in rows:
+        qty = int(items[str(r["id"])])
+        sub = float(r["price"]) * qty
+        total += sub
+        out.append({"id": r["id"], "name": r["name"], "price": r["price"],
+                    "qty": qty, "subtotal": f"{sub:.2f}"})
+    return jsonify({"items": out, "total": f"{total:.2f}"})
+
+
+@app.post("/api/cart/checkout")
+@require_auth
+def cart_checkout(payload):
+    """结算：事务逐件扣库存(stock>0原子) + 生成订单，失败全回滚，清空购物车"""
+    uid = payload["uid"]
+    items = R.hgetall(f"cart:{uid}")
+    if not items:
+        return jsonify({"error": "购物车是空的"}), 400
+    conn = mysql(MASTER)
+    try:
+        cur = conn.cursor()
+        total = 0
+        for pid, qty in items.items():
+            pid, qty = int(pid), int(qty)
+            for _ in range(qty):
+                cur.execute("UPDATE final_shop.products SET stock=stock-1 "
+                            "WHERE id=%s AND stock>0", pid)
+                if cur.rowcount == 0:
+                    raise Exception(f"商品 #{pid} 库存不足")
+                price = fetch(conn, "SELECT price FROM final_shop.products WHERE id=%s", pid)[0]["price"]
+                cur.execute("INSERT INTO final_shop.orders(user_id, product_id, amount) "
+                            "VALUES(%s, %s, %s)", (uid, pid, price))
+                total += float(price)
+        conn.commit()
+        cur.close()
+        R.delete(f"cart:{uid}")
+        return jsonify({"ok": True, "msg": f"结算成功，共 {len(items)} 种商品，合计 ¥{total:.2f}",
+                        "total": f"{total:.2f}"})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "结算失败：" + str(e)}), 409
+
+
 # ---------- 页面（完整作品：打开浏览器就能用） ----------
 @app.get("/")
 def page_index():
@@ -328,6 +403,11 @@ def page_login():
 @app.get("/register")
 def page_register():
     return render_template("register.html")
+
+
+@app.get("/cart")
+def page_cart():
+    return render_template("cart.html")
 
 
 @app.get("/me")
