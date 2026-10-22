@@ -214,7 +214,8 @@ def me(payload):
 def get_product(pid):
     hit = R.get(f"product:{pid}")                  # ① 先问缓存
     if hit:
-        return jsonify({"cache": "命中", "data": hit})
+        # 坑：缓存里存的是 JSON 字符串，必须解析回对象，否则前端取字段全是 undefined
+        return jsonify({"cache": "命中", "data": json.loads(hit)})
     try:
         rows, tag = read_row(pid)                  # ② 从库优先+熔断+半开恢复
     except Exception as e:
