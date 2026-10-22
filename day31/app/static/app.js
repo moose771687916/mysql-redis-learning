@@ -69,8 +69,25 @@ async function seckill() {
 if (document.getElementById("product")) {
   loadProduct();
   loadStats();
+  loadProducts();
   setInterval(loadProduct, 1000);
   setInterval(loadStats, 1000);
+}
+
+// ---------- 商品列表 ----------
+async function loadProducts() {
+  const r = await api("/api/products");
+  if (r.error) return;
+  const box = document.getElementById("products-list");
+  const rows = r.data.map(p =>
+    `<div class="product mini">
+       <div class="product-info">
+         <h2>${p.name}</h2>
+         <div class="muted">库存 ${p.stock}</div>
+       </div>
+       <div class="price">¥${p.price}</div>
+     </div>`).join("");
+  box.innerHTML = rows;
 }
 
 // ---------- 登录 / 注册 ----------
@@ -109,7 +126,7 @@ async function loadMe() {
   table.style.display = "";
   const body = document.getElementById("orders-body");
   body.innerHTML = r.orders.map(o =>
-    `<tr><td>商品 #${o.product_id}</td><td>¥${o.amount}</td><td>${o.created_at}</td></tr>`
+    `<tr><td>${o.name || "商品 #" + o.product_id}</td><td>¥${o.amount}</td><td>${o.created_at}</td></tr>`
   ).join("");
 }
 

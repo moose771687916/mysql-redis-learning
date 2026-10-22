@@ -205,11 +205,13 @@ def login():
 @app.get("/api/me")
 @require_auth
 def me(payload):
-    """我的信息：token → 用户 + 我的订单"""
+    """我的信息：token → 用户 + 我的订单（JOIN 出商品名）"""
     uid = payload["uid"]
     orders = fetch(mysql(MASTER),
-                   "SELECT product_id, amount, created_at FROM final_shop.orders "
-                   "WHERE user_id=%s ORDER BY id DESC", uid)
+                   "SELECT o.product_id, p.name, o.amount, o.created_at "
+                   "FROM final_shop.orders o "
+                   "LEFT JOIN final_shop.products p ON o.product_id=p.id "
+                   "WHERE o.user_id=%s ORDER BY o.id DESC", uid)
     return jsonify({"username": payload["username"], "uid": uid, "orders": orders})
 
 
@@ -228,6 +230,42 @@ def get_product(pid):
     R.setex(f"product:{pid}", 60,
             json.dumps(rows[0], ensure_ascii=False, default=str))
     return jsonify({"cache": "未命中", "source": tag, "data": rows[0]})
+
+
+def read_all():
+    """读全表商品：和 read_row 同款 从库优先+熔断+半开恢复"""
+    global slave_ok
+    src = SLAVE if slave_ok else MASTER
+    tag = "从库" if slave_ok else "主库(熔断)"
+    try:
+        if not slave_ok:
+            probe = pymysql.connect(connect_timeout=2, **SLAVE)
+            probe.close()
+            src, tag, slave_ok = SLAVE, "从库", True
+        rows = fetch(mysql(src), "SELECT * FROM final_shop.products ORDER BY id")
+        if src is SLAVE:
+            slave_ok = True
+        return rows, tag
+    except Exception:
+        if src is MASTER:
+            raise
+        slave_ok = False
+        rows = fetch(mysql(MASTER), "SELECT * FROM final_shop.products ORDER BY id")
+        return rows, "主库(熔断)"
+
+
+@app.get("/api/products")
+def list_products():
+    """商品列表（首页用）：整表缓存 30 秒 + 从库读取"""
+    hit = R.get("products:list")
+    if hit:
+        return jsonify({"cache": "命中", "data": json.loads(hit)})
+    try:
+        rows, tag = read_all()
+    except Exception as e:
+        return jsonify({"error": "db 不可用", "detail": str(e)}), 503
+    R.setex("products:list", 30, json.dumps(rows, ensure_ascii=False, default=str))
+    return jsonify({"cache": "未命中", "source": tag, "data": rows})
 
 
 @app.post("/api/seckill")
