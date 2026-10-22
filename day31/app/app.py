@@ -15,8 +15,12 @@ import json
 import os
 import threading
 import time
+from datetime import datetime, timedelta
+from functools import wraps
 
-from flask import Flask, jsonify, request
+import jwt
+from flask import Flask, jsonify, render_template, request
+from werkzeug.security import check_password_hash, generate_password_hash
 import pymysql
 import redis
 
@@ -34,6 +38,34 @@ success_cnt = 0
 lock = threading.Lock()
 
 app = Flask(__name__)
+
+# ---------- 用户系统：JWT ----------
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me-in-prod")
+JWT_EXPIRES = 24 * 3600          # token 有效期 24 小时
+
+
+def make_token(uid, username):
+    """签发 JWT：头部(算法) + 载荷(uid/名字/过期时间) + 签名(HMAC-SHA256)"""
+    payload = {"uid": uid, "username": username,
+               "exp": int(time.time()) + JWT_EXPIRES}
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+
+def require_auth(fn):
+    """鉴权装饰器：从 Authorization: Bearer <token> 取用户，失败返回 401"""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return jsonify({"error": "请先登录（缺少 token）"}), 401
+        try:
+            payload = jwt.decode(auth[7:], JWT_SECRET, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "登录已过期，请重新登录"}), 401
+        except Exception:
+            return jsonify({"error": "token 无效，请重新登录"}), 401
+        return fn(payload, *args, **kwargs)
+    return wrapper
 
 
 def mysql(cfg):
@@ -135,6 +167,49 @@ def consumer(worker_id):
 
 
 # ---------- API ----------
+@app.post("/api/register")
+def register():
+    """注册：username + password → 创建用户（密码哈希存储）"""
+    body = request.json or {}
+    name = (body.get("username") or "").strip()
+    pwd = body.get("password") or ""
+    if not (3 <= len(name) <= 32) or len(pwd) < 6:
+        return jsonify({"error": "用户名 3-32 字符，密码至少 6 位"}), 400
+    try:
+        exe(mysql(MASTER),
+            "INSERT INTO final_shop.users(username, password_hash) VALUES(%s, %s)",
+            (name, generate_password_hash(pwd)))
+    except pymysql.err.IntegrityError:
+        return jsonify({"error": "用户名已被注册"}), 409
+    row = fetch(mysql(MASTER), "SELECT id FROM final_shop.users WHERE username=%s", name)[0]
+    return jsonify({"ok": True, "token": make_token(row["id"], name),
+                    "msg": f"注册成功，欢迎 {name}"})
+
+
+@app.post("/api/login")
+def login():
+    """登录：username + password → 校验密码 → 发 token"""
+    body = request.json or {}
+    name = (body.get("username") or "").strip()
+    pwd = body.get("password") or ""
+    rows = fetch(mysql(MASTER), "SELECT * FROM final_shop.users WHERE username=%s", name)
+    if not rows or not check_password_hash(rows[0]["password_hash"], pwd):
+        return jsonify({"error": "用户名或密码错误"}), 401
+    return jsonify({"ok": True, "token": make_token(rows[0]["id"], name),
+                    "msg": f"登录成功，欢迎 {name}"})
+
+
+@app.get("/api/me")
+@require_auth
+def me(payload):
+    """我的信息：token → 用户 + 我的订单"""
+    uid = payload["uid"]
+    orders = fetch(mysql(MASTER),
+                   "SELECT product_id, amount, created_at FROM final_shop.orders "
+                   "WHERE user_id=%s ORDER BY id DESC", uid)
+    return jsonify({"username": payload["username"], "uid": uid, "orders": orders})
+
+
 @app.get("/api/product/<int:pid>")
 def get_product(pid):
     hit = R.get(f"product:{pid}")                  # ① 先问缓存
@@ -153,11 +228,21 @@ def get_product(pid):
 
 @app.post("/api/seckill")
 def seckill():
-    uid = (request.json or {}).get("uid")
+    """秒杀入口：前端带 token（页面用户），压测带 uid（内部通道）"""
+    body = request.json or {}
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            payload = jwt.decode(auth[7:], JWT_SECRET, algorithms=["HS256"])
+            uid = payload["uid"]
+        except Exception:
+            return jsonify({"error": "token 无效，请重新登录"}), 401
+    else:
+        uid = body.get("uid")
     if not uid:
-        return jsonify({"error": "需要 uid"}), 400
+        return jsonify({"error": "需要登录后抢购（或压测传 uid）"}), 400
     R.lpush("seckill:queue", uid)                  # ③ 请求先进队列（0 阻塞）
-    return jsonify({"ok": True, "msg": f"uid={uid} 已进队列"})
+    return jsonify({"ok": True, "msg": "已进入抢购队列，排队中…"})
 
 
 @app.get("/api/stats")
@@ -182,6 +267,27 @@ def reset():
     exe(mysql(MASTER), "UPDATE final_shop.products SET stock=5 WHERE id=1")
     R.delete("seckill:queue", "seckill:bought", "seckill:lock", "product:1")
     return jsonify({"ok": True, "msg": "已重置：订单清空，库存=5，队列清空"})
+
+
+# ---------- 页面（完整作品：打开浏览器就能用） ----------
+@app.get("/")
+def page_index():
+    return render_template("index.html")
+
+
+@app.get("/login")
+def page_login():
+    return render_template("login.html")
+
+
+@app.get("/register")
+def page_register():
+    return render_template("register.html")
+
+
+@app.get("/me")
+def page_me():
+    return render_template("me.html")
 
 
 if __name__ == "__main__":

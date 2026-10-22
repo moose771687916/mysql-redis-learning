@@ -44,7 +44,7 @@
 | Day 27 | MySQL 分库分表（水平拆分）| 30 万订单按 user_id 取模拆 4 表，带键查询快 3.9 倍 |
 | Day 28 | 终极版商城（27 天全家桶）| 缓存+队列+锁+幂等+读写分离+熔断，1000 人抢 5 件零超卖 |
 | Day 29 | 面试冲刺：全知识点题库 | 40 道面试题（MySQL/Redis/项目）+ 面试模拟器 |
-| Day 31 | Docker 部署终极商城 | 4 容器编排一键上线，1000 并发零超卖，熔断+半开恢复 |
+| Day 31 | Docker 部署终极商城（完整作品版）| 4 容器一键上线 + 注册登录 JWT + 前端页面，1000 并发零超卖 |
 
 ## 目录结构
 
@@ -72,7 +72,9 @@
 │   ├── interview_sim.py          # 面试模拟器：抽题→口头答→对照答案
 │   ├── day31/                    # Docker 版商城：docker-compose 4 容器（MySQL主从+Redis+app）
 │   │   ├── docker-compose.yml    # 一条命令编排全套
-│   │   ├── app/Dockerfile        # 商城应用镜像
+│   │   ├── app/Dockerfile        # 商城应用镜像（含前端 templates/static）
+│   │   ├── app/app.py            # 商城 API：商品缓存/秒杀/熔断 + 注册登录 JWT
+│   │   ├── app/templates/        # 前端页面：登录/注册/商城首页/我的订单
 │   │   └── test_shop.py          # 一键压测验收（1000并发+熔断演练）
 │   └── ...
 ├── app.py                   # 电商商城后端（Flask + MySQL + Redis）
@@ -91,7 +93,10 @@
 1. 启动 MySQL（`day01/start_mysql.bat`，**端口 4306**）与 Redis
 2. 运行商城：`python app.py` → 浏览器打开 `http://localhost:5000`
 3. 跑演示脚本：`python day18/mq_demo.py`（队列削峰）、`python day19/seckill_queue_demo.py`（秒杀接口全链路）、`python day20/replication_demo.py`（Redis 主从复制）、`python day21/failover_demo.py`（哨兵故障转移）、`python day22/read_write_demo.py`（读写分离商城）、`python day23/mysql_replication_demo.py`（MySQL 主从复制）、`python day24/mysql_read_write_demo.py`（MySQL 读写分离商城）、`python day25/mysql_failover_demo.py`（MySQL 主库故障转移）、`python day26/redis_cluster_demo.py`（Redis Cluster 真集群，需 WSL）、`python day27/sharding_demo.py`（MySQL 分库分表）、`python day28/final_shop_demo.py`（终极版商城全家桶）、`python day29/interview_sim.py`（面试模拟器）等
-4. Docker 版商城：`cd day31 && docker compose up -d --build && python test_shop.py`（需 Docker Desktop，镜像加速器已配好，见 day31.md 坑 1）
+4. Docker 版商城（完整作品）：`cd day31 && docker compose up -d --build`
+   - 浏览器打开 **http://localhost:5001**：注册 → 登录 → 抢购 → 我的订单
+   - 压测验收：`python day31/test_shop.py` → 1000 并发零超卖 + 熔断演练全绿
+   - （需 Docker Desktop，镜像加速器已配好，见 day31.md 坑 1）
 
 > 注：本地 MySQL 连接密码为教学用简单密码，仅限本地学习环境；
 > 端口用 4306 是因为 Windows 会随机保留端口区间（Hyper-V），3306/3307 曾被系统锁死。

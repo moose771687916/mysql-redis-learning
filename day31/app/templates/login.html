@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}登录 - 终极商城{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>登录</h1>
+  <form id="login-form" onsubmit="return doLogin(event)">
+    <label>用户名 <input id="username" required minlength="3" maxlength="32"></label>
+    <label>密码 <input id="password" type="password" required minlength="6"></label>
+    <button class="btn btn-primary" type="submit">登 录</button>
+    <p class="muted">还没有账号？<a href="/register">去注册</a></p>
+  </form>
+  <div id="err" class="error"></div>
+</div>
+{% endblock %}

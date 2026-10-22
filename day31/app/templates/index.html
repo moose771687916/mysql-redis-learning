@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}终极商城 - 秒杀{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>⚡ 终极商城 · 秒杀专场</h1>
+  <p class="muted">高可用架构演示：MySQL 主从 + Redis 缓存 / 队列 / 锁，1000 并发零超卖</p>
+
+  <div class="product" id="product">
+    <div class="product-info">
+      <h2 id="p-name">加载中…</h2>
+      <div class="price" id="p-price">--</div>
+      <div class="stock" id="p-stock">库存 --</div>
+      <div class="source muted" id="p-source">读源：--</div>
+    </div>
+    <button id="btn-seckill" class="btn btn-primary" onclick="seckill()">立即抢购</button>
+  </div>
+
+  <div id="result" class="result"></div>
+
+  <div class="stats muted" id="stats">订单 0 / 排队 0 / 已抢 0</div>
+</div>
+{% endblock %}

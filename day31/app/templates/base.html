@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}终极商城{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<nav class="nav">
+  <a class="brand" href="/">终极商城</a>
+  <div class="links">
+    <a href="/">首页</a>
+    <a href="/me" id="nav-me" style="display:none">我的订单</a>
+    <a href="/login" id="nav-login">登录</a>
+    <a href="/register" id="nav-register">注册</a>
+    <a href="#" id="nav-logout" style="display:none">退出</a>
+  </div>
+</nav>
+<main class="container">
+  {% block content %}{% endblock %}
+</main>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

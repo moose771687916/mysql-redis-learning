@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}我的订单 - 终极商城{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>我的订单</h1>
+  <div id="me-box" class="muted">请先登录</div>
+  <table class="orders" id="orders-table" style="display:none">
+    <thead><tr><th>商品</th><th>金额</th><th>时间</th></tr></thead>
+    <tbody id="orders-body"></tbody>
+  </table>
+</div>
+{% endblock %}

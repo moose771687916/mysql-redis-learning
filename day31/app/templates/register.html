@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}注册 - 终极商城{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>注册</h1>
+  <form id="register-form" onsubmit="return doRegister(event)">
+    <label>用户名 <input id="username" required minlength="3" maxlength="32"></label>
+    <label>密码 <input id="password" type="password" required minlength="6"></label>
+    <button class="btn btn-primary" type="submit">注 册</button>
+    <p class="muted">已有账号？<a href="/login">去登录</a></p>
+  </form>
+  <div id="err" class="error"></div>
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+/* 终极商城 —— 简洁样式 */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f6fa; color: #333; }
+
+.nav { display: flex; align-items: center; justify-content: space-between; background: #1f2937; color: #fff; padding: 12px 24px; }
+.nav a { color: #e5e7eb; text-decoration: none; margin-left: 16px; }
+.nav a:hover { color: #fff; }
+.nav .brand { font-size: 18px; font-weight: 700; color: #fff; margin: 0; }
+
+.container { max-width: 860px; margin: 32px auto; padding: 0 16px; }
+.card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.card.narrow { max-width: 420px; margin: 0 auto; }
+.card h1 { font-size: 22px; margin-bottom: 8px; }
+.card h2 { font-size: 18px; margin-bottom: 6px; }
+
+.muted { color: #888; font-size: 13px; }
+.error { color: #dc2626; margin-top: 10px; font-size: 14px; }
+.result { margin-top: 14px; min-height: 22px; font-size: 14px; }
+
+.product { display: flex; align-items: center; justify-content: space-between; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 16px 0; }
+.price { font-size: 26px; font-weight: 700; color: #dc2626; }
+.stock { margin-top: 4px; font-size: 14px; }
+.source { margin-top: 4px; }
+
+.btn { border: none; border-radius: 8px; padding: 12px 24px; font-size: 15px; cursor: pointer; }
+.btn-primary { background: #2563eb; color: #fff; }
+.btn-primary:hover { background: #1d4ed8; }
+.btn:disabled { background: #9ca3af; cursor: not-allowed; }
+
+form label { display: block; margin: 12px 0 4px; font-size: 14px; }
+form input { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; }
+form .btn { width: 100%; margin-top: 16px; }
+
+.stats { margin-top: 12px; }
+.orders { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 14px; }
+.orders th, .orders td { border-bottom: 1px solid #eee; padding: 8px 10px; text-align: left; }
+.orders th { background: #f9fafb; }
