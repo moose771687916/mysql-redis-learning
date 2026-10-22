@@ -157,6 +157,7 @@ def consumer(worker_id):
                 cur.close()
                 if n == 0:
                     continue
+                R.delete("product:1")              # ④ 扣库存成功 → 删缓存（Cache Aside：先改DB再删缓存，否则页面看到旧库存）
                 exe(conn, "INSERT INTO final_shop.orders(user_id, product_id, amount) "
                           "VALUES(%s, 1, 2999.00)", (uid,))
                 with lock:
