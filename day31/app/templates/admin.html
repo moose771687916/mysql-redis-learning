@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}管理后台 - 终极商城{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>🛠️ 管理后台</h1>
+  <p class="muted">一键重置：清空订单、3 个商品库存回满（5/50/200）、清空秒杀队列与全部缓存</p>
+  <button id="btn-reset" class="btn btn-primary" onclick="adminReset()">重置商城</button>
+  <div id="admin-msg" class="result" style="margin-top:12px;"></div>
+</div>
+{% endblock %}

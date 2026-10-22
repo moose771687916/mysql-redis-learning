@@ -201,3 +201,13 @@ async function loadMe() {
 
 if (document.getElementById("me-box")) loadMe();
 if (document.getElementById("cart-body")) loadCart();
+if (document.getElementById("btn-reset")) document.getElementById("btn-reset").onclick = adminReset;
+
+// ---------- 管理后台 ----------
+async function adminReset() {
+  const btn = document.getElementById("btn-reset");
+  btn.disabled = true;
+  const r = await api("/api/admin/reset", { method: "POST", body: JSON.stringify({}) });
+  document.getElementById("admin-msg").textContent = r.ok ? "✅ " + r.msg : "⚠️ " + r.error;
+  btn.disabled = false;
+}

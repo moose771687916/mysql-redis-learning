@@ -222,14 +222,40 @@ def me(payload):
 def get_product(pid):
     hit = R.get(f"product:{pid}")                  # ① 先问缓存
     if hit:
+        if hit == "EMPTY":
+            # 穿透防护：空值缓存命中，直接挡掉，不再打 DB
+            return jsonify({"cache": "命中(空值缓存)", "error": "商品不存在"}), 404
         # 坑：缓存里存的是 JSON 字符串，必须解析回对象，否则前端取字段全是 undefined
         return jsonify({"cache": "命中", "data": json.loads(hit)})
+
+    # ② 击穿防护：缓存失效瞬间只放 1 个请求回源（SET NX EX 互斥锁），
+    #    其余请求等 50ms 后重读缓存，避免同一时刻 N 个请求一起打 DB
+    if not R.set(f"lock:product:{pid}", "1", nx=True, ex=5):
+        time.sleep(0.05)
+        hit = R.get(f"product:{pid}")
+        if hit:
+            if hit == "EMPTY":
+                return jsonify({"cache": "等待后命中(空值缓存)", "error": "商品不存在"}), 404
+            return jsonify({"cache": "等待后命中", "data": json.loads(hit)})
+        # 极端：锁还没释放（DB 慢），直接读库兜底
+        try:
+            rows, tag = read_row(pid)
+        except Exception as e:
+            return jsonify({"error": "db 不可用", "detail": str(e)}), 503
+        if not rows:
+            return jsonify({"cache": "未命中", "source": tag, "error": "商品不存在"}), 404
+        return jsonify({"cache": "未命中", "source": tag, "data": rows[0]})
+
     try:
-        rows, tag = read_row(pid)                  # ② 从库优先+熔断+半开恢复
+        rows, tag = read_row(pid)                  # ③ 拿到锁：从库优先+熔断+半开恢复
     except Exception as e:
+        R.delete(f"lock:product:{pid}")
         return jsonify({"error": "db 不可用", "detail": str(e)}), 503
+    R.delete(f"lock:product:{pid}")
     if not rows:
-        return jsonify({"error": "商品不存在"}), 404
+        # 穿透防护：商品不存在也缓存 30s（空值），防恶意请求反复打 DB
+        R.setex(f"product:{pid}", 30, "EMPTY")
+        return jsonify({"cache": "未命中(已写空值缓存)", "source": tag, "error": "商品不存在"}), 404
     R.setex(f"product:{pid}", 60,
             json.dumps(rows[0], ensure_ascii=False, default=str))
     return jsonify({"cache": "未命中", "source": tag, "data": rows[0]})
@@ -261,14 +287,22 @@ def read_all():
 
 @app.get("/api/products")
 def list_products():
-    """商品列表（首页用）：整表缓存 30 秒 + 从库读取"""
+    """商品列表（首页用）：整表缓存 30 秒 + 从库读取 + 击穿互斥锁"""
     hit = R.get("products:list")
     if hit:
         return jsonify({"cache": "命中", "data": json.loads(hit)})
+    # 击穿防护：缓存失效瞬间只放 1 个请求回源
+    if not R.set("lock:products:list", "1", nx=True, ex=5):
+        time.sleep(0.05)
+        hit = R.get("products:list")
+        if hit:
+            return jsonify({"cache": "等待后命中", "data": json.loads(hit)})
     try:
         rows, tag = read_all()
     except Exception as e:
+        R.delete("lock:products:list")
         return jsonify({"error": "db 不可用", "detail": str(e)}), 503
+    R.delete("lock:products:list")
     R.setex("products:list", 30, json.dumps(rows, ensure_ascii=False, default=str))
     return jsonify({"cache": "未命中", "source": tag, "data": rows})
 
@@ -312,11 +346,14 @@ def stats():
 
 @app.post("/api/admin/reset")
 def reset():
-    """实验重置：清空订单 + 库存回 5（跑多轮压测用）"""
+    """实验重置：清空订单 + 3 个商品库存回满 + 清队列/缓存（跑多轮压测/演示用）"""
     exe(mysql(MASTER), "TRUNCATE TABLE final_shop.orders")
-    exe(mysql(MASTER), "UPDATE final_shop.products SET stock=5 WHERE id=1")
-    R.delete("seckill:queue", "seckill:bought", "seckill:lock", "product:1")
-    return jsonify({"ok": True, "msg": "已重置：订单清空，库存=5，队列清空"})
+    exe(mysql(MASTER), "UPDATE final_shop.products SET stock=5   WHERE id=1")
+    exe(mysql(MASTER), "UPDATE final_shop.products SET stock=50  WHERE id=2")
+    exe(mysql(MASTER), "UPDATE final_shop.products SET stock=200 WHERE id=3")
+    R.delete("seckill:queue", "seckill:bought", "seckill:lock",
+             "product:1", "product:2", "product:3", "products:list")
+    return jsonify({"ok": True, "msg": "已重置：订单清空，库存回满(5/50/200)，队列与缓存清空"})
 
 
 # ---------- 购物车（Redis Hash：cart:{uid} → field=商品id, value=数量） ----------
@@ -436,6 +473,11 @@ def page_register():
 @app.get("/cart")
 def page_cart():
     return render_template("cart.html")
+
+
+@app.get("/admin")
+def page_admin():
+    return render_template("admin.html")
 
 
 @app.get("/me")
