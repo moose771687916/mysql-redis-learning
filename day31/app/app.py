@@ -356,6 +356,34 @@ def cart_list(payload):
     return jsonify({"items": out, "total": f"{total:.2f}"})
 
 
+@app.post("/api/cart/update")
+@require_auth
+def cart_update(payload):
+    """增减数量：body {product_id, delta}，delta=+1/-1，减到 0 自动移除"""
+    uid = payload["uid"]
+    body = request.json or {}
+    pid, delta = body.get("product_id"), int(body.get("delta", 0))
+    if not pid or delta == 0:
+        return jsonify({"error": "需要 product_id 和 delta(±1)"}), 400
+    key = f"cart:{uid}"
+    new = int(R.hget(key, pid) or 0) + delta
+    if new <= 0:
+        R.hdel(key, pid)
+        return jsonify({"ok": True, "msg": "数量减到 0，已从购物车移除"})
+    R.hset(key, pid, new)
+    return jsonify({"ok": True, "msg": f"数量 → {new}"})
+
+
+@app.post("/api/cart/remove")
+@require_auth
+def cart_remove(payload):
+    """删除购物车中的商品：body {product_id}"""
+    uid = payload["uid"]
+    pid = (request.json or {}).get("product_id")
+    R.hdel(f"cart:{uid}", pid)
+    return jsonify({"ok": True, "msg": "已从购物车删除"})
+
+
 @app.post("/api/cart/checkout")
 @require_auth
 def cart_checkout(payload):

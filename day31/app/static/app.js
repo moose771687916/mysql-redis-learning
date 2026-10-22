@@ -123,11 +123,30 @@ async function loadCart() {
   body.innerHTML = r.items.map(it =>
     `<tr>
        <td>${it.name}</td><td>¥${it.price}</td>
-       <td>${it.qty}</td><td>¥${it.subtotal}</td>
-       <td><button class="btn btn-sm" onclick="checkout()">结算</button></td>
+       <td>
+         <button class="btn btn-sm" onclick="cartUpdate(${it.id},-1)">−</button>
+         <b style="margin:0 8px;">${it.qty}</b>
+         <button class="btn btn-sm btn-primary" onclick="cartUpdate(${it.id},1)">＋</button>
+       </td>
+       <td>¥${it.subtotal}</td>
+       <td>
+         <button class="btn btn-sm btn-danger" onclick="cartRemove(${it.id})">删除</button>
+       </td>
      </tr>`).join("");
   totalBox.textContent = "合计 ¥" + r.total;
   btn.style.display = "";
+}
+
+async function cartUpdate(pid, delta) {
+  const r = await api("/api/cart/update", { method: "POST", body: JSON.stringify({ product_id: pid, delta }) });
+  document.getElementById("cart-msg").textContent = r.ok ? "🛒 " + r.msg : "⚠️ " + r.error;
+  loadCart();
+}
+
+async function cartRemove(pid) {
+  const r = await api("/api/cart/remove", { method: "POST", body: JSON.stringify({ product_id: pid }) });
+  document.getElementById("cart-msg").textContent = r.ok ? "🗑️ " + r.msg : "⚠️ " + r.error;
+  loadCart();
 }
 
 async function checkout() {
