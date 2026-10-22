@@ -60,8 +60,8 @@ async function seckill() {
   const r = await api("/api/seckill", { method: "POST", body: JSON.stringify({}) });
   if (r.ok) show("🎯 " + r.msg);
   else {
-    show("需要先登录：" + r.error);
-    setTimeout(() => location.href = "/login", 1200);
+    show("⚠️ " + r.error);          // 409 一人一单 / 401 未登录
+    if (r.error && r.error.indexOf("登录") >= 0) setTimeout(() => location.href = "/login", 1200);
   }
 }
 

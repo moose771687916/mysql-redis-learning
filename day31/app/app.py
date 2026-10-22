@@ -244,6 +244,9 @@ def seckill():
         uid = body.get("uid")
     if not uid:
         return jsonify({"error": "需要登录后抢购（或压测传 uid）"}), 400
+    # 幂等预检：一人一单（别等消费者才拦，前端要看得见结果）
+    if R.sismember("seckill:bought", uid):
+        return jsonify({"ok": False, "error": "一人一单，你已经抢过啦"}), 409
     R.lpush("seckill:queue", uid)                  # ③ 请求先进队列（0 阻塞）
     return jsonify({"ok": True, "msg": "已进入抢购队列，排队中…"})
 
