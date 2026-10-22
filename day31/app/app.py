@@ -26,9 +26,11 @@ import redis
 
 # ---------- 连接配置：容器内用服务名 + 3306 ----------
 MASTER = dict(host=os.getenv("DB_MASTER_HOST", "127.0.0.1"),
-              port=3306, user="root", password="root123", autocommit=True)
+              port=3306, user="root", password="root123",
+              autocommit=True, charset="utf8mb4")
 SLAVE = dict(host=os.getenv("DB_SLAVE_HOST", "127.0.0.1"),
-             port=3306, user="root", password="root123", autocommit=True)
+             port=3306, user="root", password="root123",
+             autocommit=True, charset="utf8mb4")
 R = redis.Redis(host=os.getenv("REDIS_HOST", "127.0.0.1"),
                 port=6379, decode_responses=True)
 
