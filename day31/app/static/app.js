@@ -51,7 +51,7 @@ async function loadStats() {
   const r = await api("/api/stats");
   if (r.error) return;
   document.getElementById("stats").textContent =
-    `订单 ${r.orders} / 排队 ${r.queue} / 已抢 ${r.bought} / 读源 ${r.read_source}`;
+    `全站订单 ${r.orders} / 排队 ${r.queue} / 已抢 ${r.bought} / 读源 ${r.read_source}`;
 }
 
 function show(msg) { document.getElementById("result").textContent = msg; }
