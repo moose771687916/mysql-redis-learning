@@ -51,7 +51,7 @@ async function loadStats() {
   const r = await api("/api/stats");
   if (r.error) return;
   document.getElementById("stats").textContent =
-    `全站订单 ${r.orders} / 排队 ${r.queue} / 已抢 ${r.bought} / 读源 ${r.read_source}`;
+    `全站订单 ${r.orders} / 排队 ${r.queue} / 已抢 ${r.bought} / 限流拦截 ${r.rate_blocked} / 读源 ${r.read_source}`;
 }
 
 function show(msg) { document.getElementById("result").textContent = msg; }
@@ -60,7 +60,7 @@ async function seckill() {
   const r = await api("/api/seckill", { method: "POST", body: JSON.stringify({}) });
   if (r.ok) show("🎯 " + r.msg);
   else {
-    show("⚠️ " + r.error);          // 409 一人一单 / 401 未登录
+    show("⚠️ " + r.error);          // 429 限流 / 409 一人一单 / 401 未登录
     if (r.error && r.error.indexOf("登录") >= 0) setTimeout(() => location.href = "/login", 1200);
   }
 }

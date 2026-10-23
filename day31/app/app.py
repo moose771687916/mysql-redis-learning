@@ -325,6 +325,12 @@ def seckill():
         uid = body.get("uid")
     if not uid:
         return jsonify({"error": "需要登录后抢购（或压测传 uid）"}), 400
+    # 限流（固定窗口）：每用户每秒最多 3 次，防脚本狂点。超限 → 429 + 全局限流计数+1
+    key = f"rate:{uid}:{int(time.time())}"
+    if int(R.incr(key)) > 3:
+        R.incr("rate:blocked")
+        return jsonify({"ok": False, "error": "⏳ 操作太频繁，被限流了（每秒最多 3 次，等 1 秒再试）"}), 429
+    R.expire(key, 2)
     # 幂等预检：一人一单（别等消费者才拦，前端要看得见结果）
     if R.sismember("seckill:bought", uid):
         return jsonify({"ok": False, "error": "一人一单，你已经抢过啦"}), 409
@@ -341,6 +347,7 @@ def stats():
         return jsonify({
             "stock": stock, "orders": orders,
             "queue": R.llen("seckill:queue"), "bought": R.scard("seckill:bought"),
+            "rate_blocked": int(R.get("rate:blocked") or 0),   # 限流拦截次数（前端展示）
             "read_source": tag,
         })
     except Exception as e:
@@ -355,7 +362,8 @@ def reset():
     exe(mysql(MASTER), "UPDATE final_shop.products SET stock=50  WHERE id=2")
     exe(mysql(MASTER), "UPDATE final_shop.products SET stock=200 WHERE id=3")
     R.delete("seckill:queue", "seckill:bought", "seckill:lock",
-             "product:1", "product:2", "product:3", "products:list")
+             "product:1", "product:2", "product:3", "products:list",
+             "rate:blocked")
     return jsonify({"ok": True, "msg": "已重置：订单清空，库存回满(5/50/200)，队列与缓存清空"})
 
 
